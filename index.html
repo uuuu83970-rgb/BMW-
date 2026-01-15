@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BMW M-POWER PRO</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { 
+            width: 100%; height: 100%; 
+            background: #000; overflow: hidden; 
+            font-family: 'Arial Black', sans-serif;
+        }
+
+        #game-container {
+            width: 100vw; height: 100vh;
+            position: relative;
+            background: #87CEEB;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .hud {
+            position: absolute; top: 10%; width: 100%;
+            display: flex; justify-content: space-between;
+            padding: 0 25px; pointer-events: none; z-index: 100;
+        }
+        #speed-o { font-size: 8vw; color: #00f2ff; text-shadow: 2px 2px 10px #000; }
+        #timer-o { font-size: 6vw; color: #fff; text-shadow: 2px 2px 10px #000; }
+
+        .controls {
+            position: absolute; bottom: 5%; width: 100%;
+            display: flex; justify-content: space-between;
+            padding: 0 20px; z-index: 200;
+        }
+        .btn {
+            width: 85px; height: 85px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 3px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 40px; cursor: pointer;
+        }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 1000;
+            color: white; text-align: center; padding: 20px;
+        }
+        .start-btn {
+            padding: 18px 60px; background: #00f2ff; color: #000;
+            border: none; border-radius: 50px; font-weight: 900;
+            font-size: 24px; cursor: pointer; text-transform: uppercase;
+            box-shadow: 0 0 30px #00f2ff;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- START SCREEN -->
+    <div id="start-screen" class="overlay">
+        <h1 style="font-size: 10vw; color: #00f2ff; margin-bottom: 10px;">BMW M-POWER</h1>
+        <p style="color: #666; margin-bottom: 40px;">SOUND ON • 10 CAR CHALLENGE</p>
+        <button class="start-btn" onclick="handleAction('start')">START RACE</button>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="game-over" class="overlay" style="display: none;">
+        <h1 style="font-size: 12vw; color: #ff4444;">CRASHED</h1>
+        <p style="margin-bottom: 30px; color: #888;">Try again to beat the record!</p>
+        <button class="start-btn" onclick="handleAction('retry')">RETRY</button>
+    </div>
+
+    <div id="game-container">
+        <div class="hud">
+            <div id="speed-o">60 KM/H</div>
+            <div id="timer-o">03:00</div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="controls">
+            <div class="btn" id="btn-left"><i class="fas fa-caret-left"></i></div>
+            <div class="btn" id="btn-right"><i class="fas fa-caret-right"></i></div>
+        </div>
+    </div>
+
+<script>
+    const directLink = "https://www.effectivegatecpm.com/g4d5kg4qaf?key=406777624267375092c77834ed0b8246";
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const speedEl = document.getElementById('speed-o');
+    const timerEl = document.getElementById('timer-o');
+
+    let audioCtx, engineOsc, engineGain;
+    let gameActive = false;
+    let speed = 60;
+    let maxSpeed = 699;
+    let playerX = 0;
+    let distance = 0;
+    let startTime;
+    let traffic = [];
+    let scenery = [];
+    let keys = { left: false, right: false };
+
+    // Function to handle Link + Game Start
+    function handleAction(type) {
+        // 1. Open Direct Link in New Tab
+        window.open(directLink, '_blank');
+
+        // 2. Logic for Game
+        if (type === 'start') {
+            initGame();
+        } else {
+            location.reload(); // Refresh to restart
+        }
+    }
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            engineOsc = audioCtx.createOscillator();
+            engineGain = audioCtx.createGain();
+            engineOsc.type = 'sawtooth';
+            engineOsc.frequency.setValueAtTime(50, audioCtx.currentTime);
+            engineGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            engineOsc.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+        }
+    }
+
+    function initGame() {
+        initAudio();
+        document.getElementById('start-screen').style.display = 'none';
+        gameActive = true;
+        startTime = Date.now();
+        resize();
+        initScenery();
+        animate();
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+
+    function initScenery() {
+        for(let i=0; i<15; i++) {
+            scenery.push({ z: i * 150, side: Math.random() > 0.5 ? 1 : -1, type: Math.random() > 0.4 ? 'tree' : 'mountain' });
+        }
+    }
+
+    function drawWorld() {
+        distance += speed * 0.15;
+        ctx.fillStyle = "#87CEEB"; 
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#2ecc71";
+        ctx.fillRect(0, canvas.height/2, canvas.width, canvas.height/2);
+        ctx.fillStyle = "#333";
+        ctx.beginPath();
+        ctx.moveTo(canvas.width/2 - 20, canvas.height/2);
+        ctx.lineTo(canvas.width/2 + 20, canvas.height/2);
+        ctx.lineTo(canvas.width/2 + canvas.width, canvas.height);
+        ctx.lineTo(canvas.width/2 - canvas.width, canvas.height);
+        ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.setLineDash([30, 60]);
+        ctx.lineDashOffset = -distance * 4; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(canvas.width/2, canvas.height/2); ctx.lineTo(canvas.width/2, canvas.height); ctx.stroke();
+
+        scenery.forEach(s => {
+            s.z -= speed * 0.15;
+            if (s.z < 1) s.z = 2000;
+            let scale = 600 / s.z;
+            let xPos = canvas.width/2 + (s.side * 400 * scale);
+            let yPos = canvas.height/2 + (80 * scale);
+            if(s.type === 'mountain') {
+                ctx.fillStyle = "#7f8c8d"; ctx.beginPath();
+                ctx.moveTo(xPos - 150*scale, yPos); ctx.lineTo(xPos + 150*scale, yPos); ctx.lineTo(xPos, yPos - 200*scale); ctx.fill();
+            } else {
+                ctx.fillStyle = "#3d2b1f"; ctx.fillRect(xPos, yPos, 10*scale, 30*scale);
+                ctx.fillStyle = "#1b4d3e"; ctx.beginPath();
+                ctx.moveTo(xPos-40*scale, yPos); ctx.lineTo(xPos+50*scale, yPos); ctx.lineTo(xPos+5*scale, yPos-80*scale); ctx.fill();
+            }
+        });
+    }
+
+    function drawPlayer() {
+        const x = canvas.width/2 + playerX;
+        const y = canvas.height - 180;
+        ctx.fillStyle = "#004cff"; 
+        ctx.fillRect(x - 40, y, 80, 60);
+        ctx.fillStyle = "#111"; 
+        ctx.fillRect(x - 35, y + 5, 70, 20);
+        ctx.fillStyle = "#00f2ff"; ctx.fillRect(x + 15, y + 40, 5, 12);
+        ctx.fillStyle = "#2a00ff"; ctx.fillRect(x + 20, y + 40, 5, 12);
+        ctx.fillStyle = "#ff003c"; ctx.fillRect(x + 25, y + 40, 5, 12);
+        ctx.fillStyle = "red"; ctx.shadowBlur = 15; ctx.shadowColor = "red";
+        ctx.fillRect(x - 35, y + 35, 15, 8); ctx.fillRect(x + 20, y + 35, 15, 8);
+        ctx.shadowBlur = 0;
+    }
+
+    function drawTraffic() {
+        if(Math.random() < 0.008 && traffic.length < 10) {
+            traffic.push({ z: 2500, x: (Math.random() * 300 - 150), color: 'yellow' });
+        }
+        traffic.forEach((o, i) => {
+            o.z -= speed * 0.35;
+            let scale = 600 / o.z;
+            let xPos = canvas.width/2 + (o.x * scale) - (playerX * (o.z/2500));
+            let yPos = canvas.height/2 + (100 * scale);
+
+            if(o.z > 50 && o.z < 2500) {
+                ctx.fillStyle = o.color;
+                ctx.fillRect(xPos - 45*scale, yPos, 90*scale, 65*scale);
+                ctx.fillStyle = "#000"; ctx.fillRect(xPos - 35*scale, yPos + 8*scale, 70*scale, 15*scale);
+            }
+
+            if(o.z < 280 && o.z > 180 && Math.abs((canvas.width/2 + playerX) - xPos) < 55) {
+                gameActive = false;
+                if(engineGain) engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                document.getElementById('game-over').style.display = 'flex';
+            }
+            if(o.z < 10) traffic.splice(i, 1);
+        });
+    }
+
+    function animate() {
+        if(!gameActive) return;
+        ctx.clearRect(0,0, canvas.width, canvas.height);
+        let elapsed = (Date.now() - startTime) / 1000;
+        let remaining = Math.max(180 - elapsed, 0);
+
+        if(engineOsc) engineOsc.frequency.setValueAtTime(40 + (speed / 5), audioCtx.currentTime);
+
+        let m = Math.floor(remaining / 60); let s = Math.floor(remaining % 60);
+        timerEl.innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        if(speed < maxSpeed) speed += 0.05;
+
+        if(keys.left) playerX -= 10; if(keys.right) playerX += 10;
+        playerX = Math.max(Math.min(playerX, canvas.width/2.5), -canvas.width/2.5);
+
+        speedEl.innerText = Math.floor(speed) + " KM/H";
+        drawWorld();
+        drawTraffic();
+        drawPlayer();
+        requestAnimationFrame(animate);
+    }
+
+    const bind = (id, key) => {
+        const el = document.getElementById(id);
+        el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+        el.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
+    };
+    bind('btn-left', 'left'); bind('btn-right', 'right');
+</script>
+</body>
+</html>
